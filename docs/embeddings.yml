@@ -1,0 +1,17 @@
+Create embeddings:
+  parameters:
+    - in: formData
+      name: userID
+      type: string
+      required: true
+      description: The user ID
+    - in: formData
+      name: file
+      type: file
+      required: true
+      description: The PDF file
+  consumes:
+    - multipart/form-data
+  responses:
+    200:
+      description: Success

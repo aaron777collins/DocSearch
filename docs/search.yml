@@ -1,0 +1,41 @@
+# from
+# @app.route('/search', methods=['GET'])
+# @swag_from('docs/search.yml')  # YAML file describing the endpoint
+# def search():
+#     # Get userID and query from the request
+#     userID = request.args.get('userID')
+#     query = request.args.get('query')
+
+#     # Load the user's FAISS index and MongoDB database
+#     index = faiss.read_index(f'{userID}.index')
+#     db = client[userID]
+#     collection = db['sentences']
+
+#     # Get the query embedding
+#     query_embedding = get_embedding(query)
+
+#     # Search the FAISS index
+#     D, I = index.search(np.array([query_embedding]), k=1)
+
+#     # Get the sentence associated with the nearest embedding
+#     result = collection.find_one({'_id': I[0][0]})
+
+#     return jsonify(result)
+
+Search embeddings:
+  parameters:
+    - in: formData
+      name: userID
+      type: string
+      required: true
+      description: The user ID
+    - in: formData
+      name: query
+      type: string
+      required: true
+      description: The query
+  consumes:
+    - multipart/form-data
+  responses:
+    200:
+      description: Success

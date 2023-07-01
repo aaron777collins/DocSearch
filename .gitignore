@@ -1,0 +1,5 @@
+Indexes/
+Indexes/**/*
+venv/**/*
+.env
+
