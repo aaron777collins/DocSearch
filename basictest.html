@@ -186,7 +186,7 @@
                     const messages = response.data.history;
                     let chatHTML = "";
                     messages.forEach((msg) => {
-                        chatHTML += `<p><strong>${msg.type}:</strong> ${msg.data.content}</p>`;
+                        chatHTML += `<p><strong>${capitalizeFirstLetter(msg.type)}:</strong> ${msg.data.content}</p>`;
                     });
                     $("#chatBox").html(chatHTML);
                     $("#userMessage").val("");
@@ -200,6 +200,10 @@
                 localStorage.setItem('lastMessageHistory', $("#chatBox").html());
             });
     });
+
+    function capitalizeFirstLetter(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+    }
 </script>
 </body>
 </html>
