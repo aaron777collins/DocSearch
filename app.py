@@ -306,7 +306,7 @@ def chat():
     #     answerSummary = conversation_with_summaries.predict(input=predictionStr)
     #     print(answerSummary)
 
-    infoStr = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") for i, result in enumerate(searchResults)])
+    infoStr = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") + f"## END OF File snippet from {result['file']} (Note that when one asks which file to find the info in, these can be used) ##"for i, result in enumerate(searchResults)])
 
     # finalize an answer giving ONLY the response given the query
     predictionStr = f"Please provide clear and concise info related to this: {query} given the following info (Do not include the question in your response.. just the info. If no info is found, provide your best guess based on the info. Try not to mix people/things up between files. If the response is that you don't have any, include '[NO ANSWER]' within your response.):" + infoStr
