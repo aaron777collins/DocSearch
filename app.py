@@ -314,7 +314,7 @@ def chat():
     # copy the conversation but use the 16k model instead
     conversation_with_summaries_big = ConversationChain(
         llm=ChatOpenAI(model="gpt-3.5-turbo-16k"),
-        memory=memory.copy(deep=True),
+        memory=memory,
         verbose=True,
     )
 
