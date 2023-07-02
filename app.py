@@ -1,15 +1,24 @@
+import json
+import random
+import string
 import sys
 from flask import Flask, request, jsonify
 from flasgger import Swagger, swag_from
 import os
 from PyPDF2 import PdfFileReader
 import faiss
-from pymongo import MongoClient
+from pymongo import MongoClient, database
 import io
 import numpy as np
 from dotenv import load_dotenv
 import openai
 from datetime import datetime
+from langchain.memory import ConversationSummaryBufferMemory, ChatMessageHistory
+# from langchain.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import ConversationChain
+import requests
+
 
 load_dotenv()
 
@@ -119,12 +128,12 @@ def create_embeddings():
         return {"status": "error", "message": "No sentences were extracted from the PDF or no embeddings were created."}, 400
 
 
-@app.route('/search', methods=['GET'])
+@app.route('/search', methods=['POST'])
 @swag_from('docs/search.yml')  # YAML file describing the endpoint
 def search():
     # Get userID and query from the request
-    userID = request.args.get('userID')
-    query = request.args.get('query')
+    userID = request.form['userID']
+    query = request.form['query']
 
     print(userID, query)
 
@@ -165,6 +174,125 @@ def search():
                 results.append(result)
 
     return jsonify(results)
+
+@app.route('/getChatID', methods=['POST'])
+@swag_from('docs/getChatID.yml')  # YAML file describing the endpoint
+def getChatID():
+
+    userID = request.form['userID']
+
+    if client[userID] is None:
+        return {"status": "error", "message": "User does not exist"}, 400
+
+    db = client[userID]
+
+    chatID = ''.join(random.choices(string.ascii_uppercase + string.digits, k=15))
+    # ensure that the chatID is unique
+    while db["chats"].find_one({"_id": chatID}) is not None:
+        chatID = ''.join(random.choices(string.ascii_uppercase + string.digits, k=15))
+
+    return {"chatID": chatID}
+
+@app.route('/chat', methods=['POST'])
+@swag_from('docs/chat.yml')  # YAML file describing the endpoint
+def chat():
+    # Uses ConversationSummaryBufferMemory to store the conversation history
+    # uses the gpt-3.5-turbo for chats
+    # uses the gpt-3.5-turbo for summaries
+    # Calls the search API with the query as the last sentence in the conversation
+    # uses the 10 results from the search API, looping through each result and summarizing
+    # the result with the query as the context
+    # the best answer is iteratively refined as the AI's answer
+    # the AI's answer is then added to the conversation history
+
+    userID = request.form['userID']
+    chatID = request.form['chatID']
+    db = client[userID]
+
+    if (userID is None or chatID is None):
+        return {"status": "error", "message": "userID or chatID is not provided."}, 400
+
+
+    llm = ChatOpenAI(model="gpt-3.5-turbo")
+
+    memory = ConversationSummaryBufferMemory(
+            llm=llm,
+            max_token_limit=3000,
+        )
+
+    conversation_with_summaries = ConversationChain(
+        llm=llm,
+        memory=memory,
+        verbose=True,
+    )
+
+    # check if the chatID for the respective userID exists in the database
+    # if it does, load the conversation history from the database
+    # otherwise create a new conversation history
+    chatsFromDB = db["chats"].find_one({"_id": chatID})
+    if (chatsFromDB is None):
+        db["chats"].insert_one({"_id": chatID, "conversation": memory.chat_memory.messages})
+    else:
+        memory.chat_memory.messages = chatsFromDB["conversation"]
+
+    summariesFromDB = db["summaries"].find_one({"_id": chatID})
+    if summariesFromDB is None:
+        db["summaries"].insert_one({"_id": chatID, "summary": memory.moving_summary_buffer})
+    else:
+        memory.moving_summary_buffer = summariesFromDB["summary"]
+
+    # get the query from the request
+    query = request.form['query']
+
+    if (query is None):
+        return {"status": "error", "message": "query is not provided."}, 400
+
+    # call the search API with the query as the last sentence in the conversation
+    # get the top 10 results from the search API
+    # loop through each result and summarize the result with the query as the context
+
+    # calling the search API
+    searchResults = requests.post("http://localhost:5000/search", data={"userID": userID, "query": query})
+
+    # Example response
+    #     [
+    #   {
+    #     "_id": 0,
+    #     "distance": 0.4732133746147156,
+    #     "file": "NewInfo (3).pdf",
+    #     "sentence": "S e c r e t\np a s s w o r d\ni s\nI L i k e A p p l e s 3\nT h e\np u r p l e\ne l e p h a n t\ni s\nn a m e d\nJ o e\nS m i t h\na n d\nt h e\nb l u e\ne l e p h a n t\ni s\nn a m e d\nJ o h n\nC e n a .",
+    #     "sentence_id": "Test123_NewInfo (3).pdf_0",
+    #     "timestamp": "Sat, 01 Jul 2023 19:53:53 GMT"
+    #   },
+    #   ...
+    # ]
+
+    # extract the json objects out of the response array
+    searchResults = searchResults.json()
+
+    # loop through each result and summarize the result with the query as the context
+    # the best answer is iteratively refined as the AI's answer
+    answerSummary = "None yet"
+    for result in list(searchResults):
+        predictionStr = f"Use the previous info, query: |{query}|, the current answer so far (this may change): |{answerSummary}| and possibly this new info to formulate a better answer: " + result["sentence"].replace("\n", " ")
+        print(predictionStr)
+        answerSummary = conversation_with_summaries.predict(input=predictionStr)
+        print(answerSummary)
+
+    # finalize an answer giving ONLY the response given the query
+    predictionStr = f"Only give an answer in response to the query: |{query}|, given this info: |{answerSummary}|. Do not mention the query in your answer. Be clear and concise."
+    answer = conversation_with_summaries.predict(input=predictionStr)
+
+    print(query, answer)
+
+    # add the AI's answer to the conversation history
+    memory.save_context(inputs={"input": query}, outputs={"output": answer})
+
+    # save the conversation history to the database
+    # db["chats"].update_one({"_id": chatID}, {"$set": {"conversation": memory.chat_memory.messages}})
+    # db["summaries"].update_one({"_id": chatID}, {"$set": {"summary": memory.moving_summary_buffer}})
+
+    return {"answer": answerSummary}
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

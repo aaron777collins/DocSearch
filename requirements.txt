@@ -7,3 +7,6 @@ PyPDF2<3.0.0
 flasgger==0.9.7b2
 python-dotenv
 openai
+numpy
+langchain
+tiktoken
