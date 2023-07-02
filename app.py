@@ -225,7 +225,7 @@ def chat():
     # if chain exists, load it
     # otherwise make one
 
-    conversation_with_summaries = None
+    # conversation_with_summaries = None
 
     # make sure chainBuffers folder exists
     if not os.path.exists('chainBuffers'):
@@ -252,11 +252,11 @@ def chat():
         memory.moving_summary_buffer = summary
 
 
-    conversation_with_summaries = ConversationChain(
-        llm=llm,
-        memory=memory,
-        verbose=True,
-    )
+    # conversation_with_summaries = ConversationChain(
+    #     llm=llm,
+    #     memory=memory,
+    #     verbose=True,
+    # )
 
 
     # # check if the chatID for the respective userID exists in the database
