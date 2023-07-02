@@ -28,6 +28,8 @@ load_dotenv()
 
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
+MAX_CHAT_INTERPRET_RETRIES=3
+
 # Initialize Flask application
 app = Flask(__name__)
 swagger_config = {
@@ -304,9 +306,7 @@ def chat():
     #     answerSummary = conversation_with_summaries.predict(input=predictionStr)
     #     print(answerSummary)
 
-    infoStr = "-----".join([f"Snippet index from a file (hidden from answers): <{i+1}>, where the file is named '{result['file']} (public)' has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") for i, result in enumerate(searchResults)])
-
-
+    infoStr = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") for i, result in enumerate(searchResults)])
 
     # finalize an answer giving ONLY the response given the query
     predictionStr = f"Please provide clear and concise info related to this: {query} given the following info (Do not include the question in your response.. just the info. If no info is found, provide your best guess based on the info. Try not to mix people/things up between files. If the response is that you don't have any, include '[NO ANSWER]' within your response.):" + infoStr
@@ -318,17 +318,26 @@ def chat():
         verbose=True,
     )
 
+    # attempting to answer with the 16k model with the summaries
     answer = "[NO ANSWER]"
     count = 0
-    max_count = 2
+    max_count = MAX_CHAT_INTERPRET_RETRIES
     while "[NO ANSWER]" in answer and count < max_count:
         answer = conversation_with_summaries_big.predict(input=predictionStr)
         count += 1
 
+    # attempting to answer with the 16k model without the summaries but still with conversation context
     if "[NO ANSWER]" in answer:
         # attempt to answer with the 16k model without the summaries, just using your knowledge
-        alreadyTrainedQueryStr = f"Please provide clear and concise info related to this: {query}. Use your abilities as a super-intelligent AI in all fields (language, math, reasoning, legal, etc.) to guess the answer."
+        alreadyTrainedQueryStr = f"Please provide clear and concise info related to this: {query}. Use your abilities as a super-intelligent AI in all fields (language, math, reasoning, legal, etc.) to guess the answer. Say '[NO ANSWER]' if you can't guess the answer or related info. Note that the query is more important than previous info and may be unrelated to previous info."
         answer = conversation_with_summaries_big.predict(input=alreadyTrainedQueryStr)
+
+    if "[NO ANSWER]" in answer:
+        # remove the [NO ANSWER] from the answer
+        answer = answer.replace("[NO ANSWER]", "")
+        # if the answer is still empty, then just say that you don't know
+        if answer.strip() == "":
+            answer = "I apologize, but I don't know the answer to that with the information I have."
 
     print(query, answer)
 
