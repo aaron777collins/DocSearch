@@ -3,7 +3,7 @@
 faiss-cpu
 pymongo
 flask
-PyPDF2<3.0.0
+PyPDF2
 flasgger==0.9.7b2
 python-dotenv
 openai
