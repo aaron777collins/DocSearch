@@ -10,3 +10,4 @@ openai
 numpy
 langchain
 tiktoken
+flask-cors

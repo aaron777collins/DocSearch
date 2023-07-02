@@ -22,6 +22,7 @@ from typing import Any, Dict, List
 from langchain.schema import BaseMessage, get_buffer_string, SystemMessage, HumanMessage, AIMessage
 from langchain import LLMChain
 from langchain.schema import messages_from_dict, messages_to_dict
+from flask_cors import CORS
 
 
 load_dotenv()
@@ -32,6 +33,7 @@ MAX_CHAT_INTERPRET_RETRIES=3
 
 # Initialize Flask application
 app = Flask(__name__)
+CORS(app)
 swagger_config = {
     "headers": [],
     "specs": [
@@ -318,6 +320,9 @@ def chat():
         verbose=True,
     )
 
+    # Save memory before using it
+    OLD_MEMORY = memory.copy(deep=True)
+
     # attempting to answer with the 16k model with the summaries
     answer = "[NO ANSWER]"
     count = 0
@@ -348,12 +353,17 @@ def chat():
     memory.save_context(inputs={"input": query}, outputs={"output": answer})
     conversationHistory: List[BaseMessage]= memory.load_memory_variables(inputs=None)["history"]
 
+    # combine the conversation history from OLD_MEMORY and the new conversation history
+    OLD_CONVERSATION_HISTORY = OLD_MEMORY.load_memory_variables(inputs=None)["history"]
+
+    oldConversationPlusOnlyLatestMessages = OLD_CONVERSATION_HISTORY + conversationHistory[-2:]
+
     # save the conversation history to the database
     # db["chats"].update_one({"_id": chatID}, {"$set": {"conversation": memory.chat_memory.messages}})
     # db["summaries"].update_one({"_id": chatID}, {"$set": {"summary": memory.moving_summary_buffer}})
 
     # save the conversation history to the database
-    nativeMsgObjects = messages_to_dict(conversationHistory)
+    nativeMsgObjects = messages_to_dict(oldConversationPlusOnlyLatestMessages)
 
     # get summary
     memorySummary = memory.moving_summary_buffer
