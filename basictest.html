@@ -45,6 +45,9 @@
         <div class="col-12">
             <input class="form-control" type="text" id="userID" placeholder="Enter UserID">
             <input class="form-control mt-2" type="text" id="chatID" placeholder="Enter ChatID (optional)">
+            <input class="form-control mt-2" type="text" id="networkIP" placeholder="Enter Network IP (optional)">
+            <button class="btn btn-primary mt-2" id="saveIP">Save IP</button>
+
             <button class="btn btn-primary mt-2" id="startChat">Start Chat</button>
         </div>
         <div class="col-12 mt-5">
@@ -67,6 +70,7 @@
     let chatID = localStorage.getItem('chatID');
     let userID = localStorage.getItem('userID');
     let lastMessageHistory = localStorage.getItem('lastMessageHistory');
+    let networkIP = localStorage.getItem('networkIP');
 
     // on doc ready
     document.addEventListener("DOMContentLoaded", function(event) {
@@ -79,6 +83,23 @@
         if (lastMessageHistory) {
             $("#chatBox").html(lastMessageHistory);
             console.log("lastMessageHistory: " + lastMessageHistory)
+        }
+        if (networkIP) {
+            $("#networkIP").val(networkIP);
+        } else {
+            $("#networkIP").val("http://localhost:5000");
+        }
+    });
+
+    $("#saveIP").click(function () {
+        const newIP = $("#networkIP").val();
+        if (newIP) {
+            networkIP = newIP;
+            localStorage.setItem('networkIP', networkIP);
+            // append to the end of the chat box in green
+            $("#chatBox").append(`<p style="color: green;">IP saved: ${networkIP}</p>`);
+        } else {
+            alert("Please enter an IP.");
         }
     });
 
@@ -109,7 +130,7 @@
         $("#overlay").show();
 
         axios
-            .post("http://localhost:5000/getChatID", chatForm)
+            .post(`${networkIP}/getChatID`, chatForm)
             .then(function (response) {
                 $("#overlay").hide();
 
@@ -155,7 +176,7 @@
         $("#overlay").show();
 
         axios
-            .post("http://localhost:5000/chat", messageForm)
+            .post(`${networkIP}/chat`, messageForm)
             .then(function (response) {
                 $("#overlay").hide();
 
