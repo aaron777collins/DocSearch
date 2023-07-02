@@ -54,6 +54,7 @@
             <div id="chatBox" class="border rounded p-2" style="height: 400px; overflow-y: auto"></div>
             <input class="form-control mt-2" type="text" id="userMessage" placeholder="Type message">
             <button class="btn btn-primary mt-2" id="sendMessage">Send</button>
+            <button class="btn btn-primary mt-2" id="clearChat">Clear</button>
         </div>
     </div>
 </div>
@@ -199,6 +200,11 @@
                 $("#chatBox").html(`<p style="color: red;">${error}</p>`);
                 localStorage.setItem('lastMessageHistory', $("#chatBox").html());
             });
+    });
+
+    $("#clearChat").click(function () {
+        $("#chatBox").html("");
+        localStorage.setItem('lastMessageHistory', "");
     });
 
     function capitalizeFirstLetter(string) {
