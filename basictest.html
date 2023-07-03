@@ -1,128 +1,185 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Chat Application</title>
 
     <!-- Bootstrap CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/css/bootstrap.min.css"
+      integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh"
+      crossorigin="anonymous"
+    />
 
     <!-- Axios -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.js" integrity="sha512-RjvSEaeDqPCfUVQ9kna2/2OqHz/7F04IOl1/66LmQjB/lOeAzwq7LrbTzDbz5cJzlPNJ5qteNtHR56XaJSTNWw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.4.0/axios.js"
+      integrity="sha512-RjvSEaeDqPCfUVQ9kna2/2OqHz/7F04IOl1/66LmQjB/lOeAzwq7LrbTzDbz5cJzlPNJ5qteNtHR56XaJSTNWw=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    ></script>
 
     <!-- JQuery -->
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js" integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g=" crossorigin="anonymous"></script>
+    <script
+      src="https://code.jquery.com/jquery-3.7.0.min.js"
+      integrity="sha256-2Pmvv0kuTBOenSvLm6bvfBSSHrUJ+3A7x6P5Ebd07/g="
+      crossorigin="anonymous"
+    ></script>
 
     <style>
-        #overlay {
-            display: none;
-            position: fixed;
-            width: 100%;
-            height: 100%;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0,0,0,0.5);
-            z-index: 2;
-            cursor: pointer;
-        }
-        .overlay-content {
-            position: absolute;
-            top: 50%;
-            left: 50%;
+      #overlay {
+        display: none;
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 2;
+        cursor: pointer;
+      }
+      .overlay-content {
+        position: absolute;
+        top: 50%;
+        left: 50%;
 
-            color: white;
-            transform: translate(-50%,-50%);
-            -ms-transform: translate(-50%,-50%);
-        }
+        color: white;
+        transform: translate(-50%, -50%);
+        -ms-transform: translate(-50%, -50%);
+      }
     </style>
-</head>
-<body>
-<div class="container">
-    <div class="row mt-5">
+  </head>
+  <body>
+    <div class="container">
+      <div class="row mt-5">
         <div class="col-12">
-            <input class="form-control" type="text" id="userID" placeholder="Enter UserID">
-            <input class="form-control mt-2" type="text" id="chatID" placeholder="Enter ChatID (optional)">
-            <input class="form-control mt-2" type="text" id="networkIP" placeholder="Enter Network IP (optional)">
-            <button class="btn btn-primary mt-2" id="saveIP">Save IP</button>
-
-            <button class="btn btn-primary mt-2" id="startChat">Start Chat</button>
+          <input
+            class="form-control"
+            type="text"
+            id="userID"
+            placeholder="Enter UserID"
+          />
+          <input
+            class="form-control mt-2"
+            type="text"
+            id="chatID"
+            placeholder="Enter ChatID (optional)"
+          />
+          <input
+            class="form-control mt-2"
+            type="text"
+            id="networkIP"
+            placeholder="Enter Network IP (optional)"
+          />
+          <button class="btn btn-primary mt-2" id="saveIP">Save IP</button>
+          <button class="btn btn-primary mt-2" id="startChat">
+            Start Chat
+          </button>
+          <!-- Toggle for using AI prompts -->
+          <br />
+          <div class="form-check">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              value=""
+              id="UseAIPrompt"
+              checked
+            />
+            <label class="form-check-label" for="UseAIPrompt">
+              Reword Prompt With AI
+            </label>
+          </div>
         </div>
         <div class="col-12 mt-5">
-            <div id="chatBox" class="border rounded p-2" style="height: 400px; overflow-y: auto"></div>
-            <input class="form-control mt-2" type="text" id="userMessage" placeholder="Type message">
-            <button class="btn btn-primary mt-2" id="sendMessage">Send</button>
-            <button class="btn btn-primary mt-2" id="clearChat">Clear</button>
+          <div
+            id="chatBox"
+            class="border rounded p-2"
+            style="height: 400px; overflow-y: auto"
+          ></div>
+          <input
+            class="form-control mt-2"
+            type="text"
+            id="userMessage"
+            placeholder="Type message"
+          />
+          <button class="btn btn-primary mt-2" id="sendMessage">Send</button>
+          <button class="btn btn-primary mt-2" id="clearChat">Clear</button>
         </div>
+      </div>
     </div>
-</div>
 
-<div id="overlay">
-    <div class="overlay-content">
+    <div id="overlay">
+      <div class="overlay-content">
         <div class="spinner-border" role="status">
-            <span class="sr-only">Loading...</span>
+          <span class="sr-only">Loading...</span>
         </div>
+      </div>
     </div>
-</div>
 
-<script>
-    let chatID = localStorage.getItem('chatID');
-    let userID = localStorage.getItem('userID');
-    let lastMessageHistory = localStorage.getItem('lastMessageHistory');
-    let networkIP = localStorage.getItem('networkIP');
+    <script>
+      let chatID = localStorage.getItem("chatID");
+      let userID = localStorage.getItem("userID");
+      let lastMessageHistory = localStorage.getItem("lastMessageHistory");
+      let networkIP = localStorage.getItem("networkIP");
 
-    // on doc ready
-    document.addEventListener("DOMContentLoaded", function(event) {
+      // on doc ready
+      document.addEventListener("DOMContentLoaded", function (event) {
         if (chatID) {
-            $("#chatID").val(chatID);
+          $("#chatID").val(chatID);
         }
         if (userID) {
-            $("#userID").val(userID);
+          $("#userID").val(userID);
         }
         if (lastMessageHistory) {
-            $("#chatBox").html(lastMessageHistory);
-            console.log("lastMessageHistory: " + lastMessageHistory)
+          $("#chatBox").html(lastMessageHistory);
+          console.log("lastMessageHistory: " + lastMessageHistory);
         }
         if (networkIP) {
-            $("#networkIP").val(networkIP);
+          $("#networkIP").val(networkIP);
         } else {
-            $("#networkIP").val("http://localhost:5000");
+          $("#networkIP").val("http://localhost:5000");
         }
-    });
+      });
 
-    $("#saveIP").click(function () {
+      $("#saveIP").click(function () {
         const newIP = $("#networkIP").val();
         if (newIP) {
-            networkIP = newIP;
-            localStorage.setItem('networkIP', networkIP);
-            // append to the end of the chat box in green
-            $("#chatBox").append(`<p style="color: green;">IP saved: ${networkIP}</p>`);
+          networkIP = newIP;
+          localStorage.setItem("networkIP", networkIP);
+          // append to the end of the chat box in green
+          $("#chatBox").append(
+            `<p style="color: green;">IP saved: ${networkIP}</p>`
+          );
         } else {
-            alert("Please enter an IP.");
+          alert("Please enter an IP.");
         }
-    });
+      });
 
-    $("#startChat").click(function () {
+      $("#startChat").click(function () {
         const userID = $("#userID").val();
         if (!userID) {
-            alert("Please enter a UserID");
-            return;
+          alert("Please enter a UserID");
+          return;
         }
 
         // save userID
-        localStorage.setItem('userID', userID);
+        localStorage.setItem("userID", userID);
 
         // If chatID input is not empty, use that.
         // Otherwise, start a new chat.
         const enteredChatID = $("#chatID").val();
         if (enteredChatID) {
-            chatID = enteredChatID;
-            // put chat started message in chat box
-            $("#chatBox").html(`<p style="color: green;">Chat started. Chat ID: ${chatID}</p>`);
-            localStorage.setItem('chatID', chatID);
-            return;
+          chatID = enteredChatID;
+          // put chat started message in chat box
+          $("#chatBox").html(
+            `<p style="color: green;">Chat started. Chat ID: ${chatID}</p>`
+          );
+          localStorage.setItem("chatID", chatID);
+          return;
         }
 
         const chatForm = new FormData();
@@ -131,42 +188,43 @@
         $("#overlay").show();
 
         axios
-            .post(`${networkIP}/getChatID`, chatForm)
-            .then(function (response) {
-                $("#overlay").hide();
+          .post(`${networkIP}/getChatID`, chatForm)
+          .then(function (response) {
+            $("#overlay").hide();
 
-                if (response.data.status === "error") {
-                    alert(response.data.message);
-                } else {
-                    chatID = response.data.chatID;
-                    // put chat started message in chat box
-                    $("#chatBox").html(`<p style="color: green;">Chat started. Chat ID: ${chatID}</p>`);
-                    localStorage.setItem('chatID', chatID);
-                    // setting the chatID in the input field
-                    $("#chatID").val(chatID);
-                }
-            })
-            .catch(function (error) {
-                $("#overlay").hide();
-                alert(`Error occurred: ${error}`);
-            });
-    });
+            if (response.data.status === "error") {
+              alert(response.data.message);
+            } else {
+              chatID = response.data.chatID;
+              // put chat started message in chat box
+              $("#chatBox").html(
+                `<p style="color: green;">Chat started. Chat ID: ${chatID}</p>`
+              );
+              localStorage.setItem("chatID", chatID);
+              // setting the chatID in the input field
+              $("#chatID").val(chatID);
+            }
+          })
+          .catch(function (error) {
+            $("#overlay").hide();
+            alert(`Error occurred: ${error}`);
+          });
+      });
 
-    $("#sendMessage").click(function () {
-
+      $("#sendMessage").click(function () {
         // store chatId and userID just in case it changed
-        localStorage.setItem('chatID', chatID);
-        localStorage.setItem('userID', $("#userID").val());
+        localStorage.setItem("chatID", chatID);
+        localStorage.setItem("userID", $("#userID").val());
 
         const message = $("#userMessage").val();
         if (!message) {
-            alert("Please type a message");
-            return;
+          alert("Please type a message");
+          return;
         }
 
         if (!chatID) {
-            alert("Please start a chat first");
-            return;
+          alert("Please start a chat first");
+          return;
         }
 
         const messageForm = new FormData();
@@ -176,40 +234,51 @@
 
         $("#overlay").show();
 
+        // check if Use AI Prompt is checked
+        useAIPrompt = $("#UseAIPrompt").is(":checked");
+
+        chatAddr = `${networkIP}/chat`;
+        if (useAIPrompt) {
+          chatAddr = `${networkIP}/chatWithAIQuery`;
+        }
+
         axios
-            .post(`${networkIP}/chat`, messageForm)
-            .then(function (response) {
-                $("#overlay").hide();
+          .post(chatAddr, messageForm)
+          .then(function (response) {
+            $("#overlay").hide();
 
-                if (response.data.status === "error") {
-                    alert(response.data.message);
-                } else {
-                    const messages = response.data.history;
-                    let chatHTML = "";
-                    messages.forEach((msg) => {
-                        chatHTML += `<p><strong>${capitalizeFirstLetter(msg.type)}:</strong> ${msg.data.content}</p>`;
-                    });
-                    $("#chatBox").html(chatHTML);
-                    $("#userMessage").val("");
-                    localStorage.setItem('lastMessageHistory', $("#chatBox").html());
-                }
-            })
-            .catch(function (error) {
-                $("#overlay").hide();
-                alert(`Error occurred: ${error}`);
-                $("#chatBox").html(`<p style="color: red;">${error}</p>`);
-                localStorage.setItem('lastMessageHistory', $("#chatBox").html());
-            });
-    });
+            if (response.data.status === "error") {
+              alert(response.data.message);
+            } else {
+              const messages = response.data.history;
+              console.log(response.data)
+              let chatHTML = "";
+              messages.forEach((msg) => {
+                chatHTML += `<p><strong>${capitalizeFirstLetter(
+                  msg.type
+                )}:</strong> ${msg.data.content}</p>`;
+              });
+              $("#chatBox").html(chatHTML);
+              $("#userMessage").val("");
+              localStorage.setItem("lastMessageHistory", $("#chatBox").html());
+            }
+          })
+          .catch(function (error) {
+            $("#overlay").hide();
+            alert(`Error occurred: ${error}`);
+            $("#chatBox").html(`<p style="color: red;">${error}</p>`);
+            localStorage.setItem("lastMessageHistory", $("#chatBox").html());
+          });
+      });
 
-    $("#clearChat").click(function () {
+      $("#clearChat").click(function () {
         $("#chatBox").html("");
-        localStorage.setItem('lastMessageHistory', "");
-    });
+        localStorage.setItem("lastMessageHistory", "");
+      });
 
-    function capitalizeFirstLetter(string) {
+      function capitalizeFirstLetter(string) {
         return string.charAt(0).toUpperCase() + string.slice(1);
-    }
-</script>
-</body>
+      }
+    </script>
+  </body>
 </html>

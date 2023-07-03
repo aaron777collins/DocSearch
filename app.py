@@ -201,6 +201,65 @@ def getChatID():
 
     return {"chatID": chatID}
 
+@app.route('/chatWithAIQuery', methods=['POST'])
+@swag_from('docs/chatWithAIQuery.yml')  # YAML file describing the endpoint
+def chatWithAIQuery():
+    # Rewords the query given the context of the conversation
+    # to give better results
+    # Uses the gpt-3.5-turbo-16k for rewording
+    userID = request.form['userID']
+    chatID = request.form['chatID']
+    query = request.form['query']
+    db = client[userID]
+
+    if (userID is None or chatID is None or query is None):
+        return {"status": "error", "message": "userID, chatID, or query is not provided."}, 400
+
+    llm = ChatOpenAI(model="gpt-3.5-turbo")
+
+    messagesFromDB = db["chats"].find_one({"_id": chatID})
+    if (messagesFromDB is None):
+        # create a new chain
+        memory = ConversationSummaryBufferMemory(
+            llm=llm,
+            max_token_limit=3000,
+            return_messages=True,
+        )
+    else:
+        messages = messages_from_dict(messagesFromDB["messages"])
+        summary = messagesFromDB["summary"]
+        history = ChatMessageHistory(messages=messages)
+        memory = ConversationSummaryBufferMemory(
+            llm=llm,
+            max_token_limit=3000,
+            return_messages=True,
+            chat_memory=history,
+        )
+        memory.moving_summary_buffer = summary
+
+    conversation_with_summaries_big = ConversationChain(
+        llm=ChatOpenAI(model="gpt-3.5-turbo-16k"),
+        memory=memory,
+        verbose=True,
+    )
+
+    # Save memory before using it
+    OLD_MEMORY = memory.copy(deep=True)
+
+    # get the reworded query
+    rewordQueryStr = f"You're a super intelligent AI with the ability to reword prompts to search a vector database easier. \
+        Please rewrite this query to make sense and for finding the best answer to the question (if the prompt is good as is, or is just continuing the conversation, \
+                just respond with the original prompt. Note that you may need to use the context of this conversation to create a \
+                    new query for the info. Don't say 'reworded prompt:', just say the new prompt.): {query} (Only respond with the \
+                        reworded prompt and do not say anything else.)"
+
+    reworded_query = conversation_with_summaries_big.predict(input=rewordQueryStr)
+
+
+    # now calling the /chat endpoint with the reworded query
+    res = requests.post("http://localhost:5000/chat", data={"userID": userID, "chatID": chatID, "query": reworded_query})
+    return res.json()
+
 @app.route('/chat', methods=['POST'])
 @swag_from('docs/chat.yml')  # YAML file describing the endpoint
 def chat():
@@ -215,10 +274,11 @@ def chat():
 
     userID = request.form['userID']
     chatID = request.form['chatID']
+    query = request.form['query']
     db = client[userID]
 
-    if (userID is None or chatID is None):
-        return {"status": "error", "message": "userID or chatID is not provided."}, 400
+    if (userID is None or chatID is None or query is None):
+        return {"status": "error", "message": "userID, chatID, or query is not provided."}, 400
 
 
     llm = ChatOpenAI(model="gpt-3.5-turbo")
@@ -228,10 +288,6 @@ def chat():
     # otherwise make one
 
     # conversation_with_summaries = None
-
-    # make sure chainBuffers folder exists
-    if not os.path.exists('chainBuffers'):
-        os.makedirs('chainBuffers')
 
     messagesFromDB = db["chats"].find_one({"_id": chatID})
     if (messagesFromDB is None):
@@ -260,59 +316,6 @@ def chat():
     #     verbose=True,
     # )
 
-
-    # # check if the chatID for the respective userID exists in the database
-    # # if it does, load the conversation history from the database
-    # # otherwise create a new conversation history
-    # chatsFromDB = db["chats"].find_one({"_id": chatID})
-    # if (chatsFromDB is None):
-    #     db["chats"].insert_one({"_id": chatID, "conversation": memory.chat_memory.messages})
-    # else:
-    #     memory.chat_memory.messages = chatsFromDB["conversation"]
-
-    # get the query from the request
-    query = request.form['query']
-
-    if (query is None):
-        return {"status": "error", "message": "query is not provided."}, 400
-
-    # call the search API with the query as the last sentence in the conversation
-    # get the top 10 results from the search API
-    # loop through each result and summarize the result with the query as the context
-
-    # calling the search API
-    searchResults = requests.post("http://localhost:5000/search", data={"userID": userID, "query": query})
-
-    # Example response
-    #     [
-    #   {
-    #     "_id": 0,
-    #     "distance": 0.4732133746147156,
-    #     "file": "NewInfo (3).pdf",
-    #     "sentence": "S e c r e t\np a s s w o r d\ni s\nI L i k e A p p l e s 3\nT h e\np u r p l e\ne l e p h a n t\ni s\nn a m e d\nJ o e\nS m i t h\na n d\nt h e\nb l u e\ne l e p h a n t\ni s\nn a m e d\nJ o h n\nC e n a .",
-    #     "sentence_id": "Test123_NewInfo (3).pdf_0",
-    #     "timestamp": "Sat, 01 Jul 2023 19:53:53 GMT"
-    #   },
-    #   ...
-    # ]
-
-    # extract the json objects out of the response array
-    searchResults = searchResults.json()
-
-    # loop through each result and summarize the result with the query as the context
-    # the best answer is iteratively refined as the AI's answer
-    answerSummary = None
-    # for result in list(searchResults):
-    #     predictionStr = f"Use the previous info, query: |{query}|, the current answer so far (this may change): |{answerSummary}| and possibly this new info to formulate a better answer: " + result["sentence"].replace("\n", " ")
-    #     print(predictionStr)
-    #     answerSummary = conversation_with_summaries.predict(input=predictionStr)
-    #     print(answerSummary)
-
-    infoStr = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") + f"## END OF File snippet from {result['file']} (Note that when one asks which file to find the info in, these can be used) ##"for i, result in enumerate(searchResults)])
-
-    # finalize an answer giving ONLY the response given the query
-    predictionStr = f"Please provide clear and concise info related to this: {query} given the following info (Do not include the question in your response.. just the info. If no info is found, provide your best guess based on the info. Try not to mix people/things up between files. If the response is that you don't have any, include '[NO ANSWER]' within your response.):" + infoStr
-
     # copy the conversation but use the 16k model instead
     conversation_with_summaries_big = ConversationChain(
         llm=ChatOpenAI(model="gpt-3.5-turbo-16k"),
@@ -323,55 +326,152 @@ def chat():
     # Save memory before using it
     OLD_MEMORY = memory.copy(deep=True)
 
-    # attempting to answer with the 16k model with the summaries
-    answer = "[NO ANSWER]"
-    count = 0
-    max_count = MAX_CHAT_INTERPRET_RETRIES
-    while "[NO ANSWER]" in answer and count < max_count:
-        answer = conversation_with_summaries_big.predict(input=predictionStr)
-        count += 1
 
-    # attempting to answer with the 16k model without the summaries but still with conversation context
-    if "[NO ANSWER]" in answer:
-        # attempt to answer with the 16k model without the summaries, just using your knowledge
-        alreadyTrainedQueryStr = f"Please provide clear and concise info related to this: {query}. Use your abilities as a super-intelligent AI in all fields (language, math, reasoning, legal, etc.) to guess the answer. Say '[NO ANSWER]' if you can't guess the answer or related info. Note that the query is more important than previous info and may be unrelated to previous info."
-        answer = conversation_with_summaries_big.predict(input=alreadyTrainedQueryStr)
+    # # check if the chatID for the respective userID exists in the database
+    # # if it does, load the conversation history from the database
+    # # otherwise create a new conversation history
+    # chatsFromDB = db["chats"].find_one({"_id": chatID})
+    # if (chatsFromDB is None):
+    #     db["chats"].insert_one({"_id": chatID, "conversation": memory.chat_memory.messages})
+    # else:
+    #     memory.chat_memory.messages = chatsFromDB["conversation"]
 
-    if "[NO ANSWER]" in answer:
-        # remove the [NO ANSWER] from the answer
-        answer = answer.replace("[NO ANSWER]", "")
-        # if the answer is still empty, then just say that you don't know
-        if answer.strip() == "":
-            answer = "I apologize, but I don't know the answer to that with the information I have."
+    copy_of_conversation_with_summaries_big = ConversationChain(
+        llm=ChatOpenAI(model="gpt-3.5-turbo-16k"),
+        memory=memory.copy(deep=True),
+        verbose=True,
+    )
 
-    print(query, answer)
+    shouldQueryStr = f"You're a super intelligent AI with the ability to do anything. Please determine whether more info \
+        is needed to answer this question or if we can just respond with the answer. If more info is needed, please respond \
+            with '[QUERY]' and if we can just respond with the answer, please respond with the answer, followed by '[CONTINUE CONVO]'. The query is: {query} (Only respond with '[QUERY]' or the answer with '[CONTINUE CONVO]' and do not say anything else.)"
+    shouldQueryResponse = copy_of_conversation_with_summaries_big.predict(input=shouldQueryStr)
 
-    # add the AI's answer to the conversation history
-    # memory.save_context(inputs={"input": query}, outputs={"output": answer})
-    # memory.prune()
+    if "[CONTINUE CONVO]" in shouldQueryResponse:
+        # Respond with the answer without [CONTINUE CONVO]
+        shouldQueryResponse = shouldQueryResponse.replace("[CONTINUE CONVO]", "")
 
-    memory.save_context(inputs={"input": query}, outputs={"output": answer})
-    conversationHistory: List[BaseMessage]= memory.load_memory_variables(inputs=None)["history"]
+        memory.save_context(inputs={"input": query}, outputs={"output": shouldQueryResponse})
+        conversationHistory: List[BaseMessage]= memory.load_memory_variables(inputs=None)["history"]
 
-    # combine the conversation history from OLD_MEMORY and the new conversation history
-    OLD_CONVERSATION_HISTORY = OLD_MEMORY.load_memory_variables(inputs=None)["history"]
+        # combine the conversation history from OLD_MEMORY and the new conversation history
+        OLD_CONVERSATION_HISTORY = OLD_MEMORY.load_memory_variables(inputs=None)["history"]
 
-    oldConversationPlusOnlyLatestMessages = OLD_CONVERSATION_HISTORY + conversationHistory[-2:]
+        oldConversationPlusOnlyLatestMessages = OLD_CONVERSATION_HISTORY + conversationHistory[-2:]
 
-    # save the conversation history to the database
-    # db["chats"].update_one({"_id": chatID}, {"$set": {"conversation": memory.chat_memory.messages}})
-    # db["summaries"].update_one({"_id": chatID}, {"$set": {"summary": memory.moving_summary_buffer}})
+        # removing system messages
+        oldConversationPlusOnlyLatestMessages = [msg for msg in oldConversationPlusOnlyLatestMessages if msg.type != "system"]
 
-    # save the conversation history to the database
-    nativeMsgObjects = messages_to_dict(oldConversationPlusOnlyLatestMessages)
+        # save the conversation history to the database
+        # db["chats"].update_one({"_id": chatID}, {"$set": {"conversation": memory.chat_memory.messages}})
+        # db["summaries"].update_one({"_id": chatID}, {"$set": {"summary": memory.moving_summary_buffer}})
 
-    # get summary
-    memorySummary = memory.moving_summary_buffer
+        # save the conversation history to the database
+        nativeMsgObjects = messages_to_dict(oldConversationPlusOnlyLatestMessages)
 
-    # insert or update the chat history
-    db["chats"].update_one({"_id": chatID}, {"$set": {"messages": nativeMsgObjects, "summary": memorySummary}}, upsert=True)
+        # get summary
+        memorySummary = memory.moving_summary_buffer
 
-    return {"answer": answer, "summary": memory.moving_summary_buffer, "history": nativeMsgObjects}
+        # insert or update the chat history
+        db["chats"].update_one({"_id": chatID}, {"$set": {"messages": nativeMsgObjects, "summary": memorySummary}}, upsert=True)
+
+        return {"answer": shouldQueryResponse, "summary": memory.moving_summary_buffer, "history": nativeMsgObjects}
+    else:
+
+        # call the search API with the query as the last sentence in the conversation
+        # get the top 10 results from the search API
+        # loop through each result and summarize the result with the query as the context
+
+        # predict whether we should query or just respond
+        # if the query is a question that we wouldn't know how to answer, then we should query and include [QUERY]
+        # otherwise we should just respond and include [CONTINUE CONVO]
+
+        # calling the search API
+        searchResults = requests.post("http://localhost:5000/search", data={"userID": userID, "query": query})
+
+        # Example response
+        #     [
+        #   {
+        #     "_id": 0,
+        #     "distance": 0.4732133746147156,
+        #     "file": "NewInfo (3).pdf",
+        #     "sentence": "S e c r e t\np a s s w o r d\ni s\nI L i k e A p p l e s 3\nT h e\np u r p l e\ne l e p h a n t\ni s\nn a m e d\nJ o e\nS m i t h\na n d\nt h e\nb l u e\ne l e p h a n t\ni s\nn a m e d\nJ o h n\nC e n a .",
+        #     "sentence_id": "Test123_NewInfo (3).pdf_0",
+        #     "timestamp": "Sat, 01 Jul 2023 19:53:53 GMT"
+        #   },
+        #   ...
+        # ]
+
+        # extract the json objects out of the response array
+        searchResults = searchResults.json()
+
+        # loop through each result and summarize the result with the query as the context
+        # the best answer is iteratively refined as the AI's answer
+        answerSummary = None
+        # for result in list(searchResults):
+        #     predictionStr = f"Use the previous info, query: |{query}|, the current answer so far (this may change): |{answerSummary}| and possibly this new info to formulate a better answer: " + result["sentence"].replace("\n", " ")
+        #     print(predictionStr)
+        #     answerSummary = conversation_with_summaries.predict(input=predictionStr)
+        #     print(answerSummary)
+
+        infoStr = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") + f"## END OF File snippet from {result['file']} (Note that when one asks which file to find the info in, these can be used) ##"for i, result in enumerate(searchResults)])
+
+        # finalize an answer giving ONLY the response given the query
+        predictionStr = f"Please make a decision. Either provide clear and concise info related to this: {query} given the following info (Do not include the question in your response.. just the info. If no info is found, provide your best guess based on the info. Try not to mix people/things up between files.) OR if the response would be that you don't have any related info, say '[NO ANSWER]' within your response.:" + infoStr
+
+
+        # attempting to answer with the 16k model with the summaries
+        answer = "[NO ANSWER]"
+        count = 0
+        max_count = MAX_CHAT_INTERPRET_RETRIES
+        while "[NO ANSWER]" in answer and count < max_count:
+            answer = conversation_with_summaries_big.predict(input=predictionStr)
+            count += 1
+
+        # attempting to answer with the 16k model without the summaries but still with conversation context
+        if "[NO ANSWER]" in answer:
+            # attempt to answer with the 16k model without the summaries, just using your knowledge
+            alreadyTrainedQueryStr = f"Please provide clear and concise info related to this: {query}. Use your abilities as a super-intelligent AI in all fields (language, math, reasoning, legal, etc.) to guess the answer. Say '[NO ANSWER]' if you can't guess the answer or related info. Note that the query is more important than previous info or conversation and may be unrelated to previous info/conversation."
+            answer = conversation_with_summaries_big.predict(input=alreadyTrainedQueryStr)
+
+        if "[NO ANSWER]" in answer:
+            # remove the [NO ANSWER] from the answer
+            answer = answer.replace("[NO ANSWER]", "")
+            # if the answer is still empty, then just say that you don't know
+            if answer.strip() == "":
+                answer = "I apologize, but I don't know the answer to that with the information I have."
+
+        print(query, answer)
+
+        # add the AI's answer to the conversation history
+        # memory.save_context(inputs={"input": query}, outputs={"output": answer})
+        # memory.prune()
+
+        memory.save_context(inputs={"input": query}, outputs={"output": answer})
+        conversationHistory: List[BaseMessage]= memory.load_memory_variables(inputs=None)["history"]
+
+        # combine the conversation history from OLD_MEMORY and the new conversation history
+        OLD_CONVERSATION_HISTORY = OLD_MEMORY.load_memory_variables(inputs=None)["history"]
+
+        oldConversationPlusOnlyLatestMessages = OLD_CONVERSATION_HISTORY + conversationHistory[-2:]
+
+        # removing system messages
+        oldConversationPlusOnlyLatestMessages = [msg for msg in oldConversationPlusOnlyLatestMessages if msg.type != "system"]
+
+        # save the conversation history to the database
+        # db["chats"].update_one({"_id": chatID}, {"$set": {"conversation": memory.chat_memory.messages}})
+        # db["summaries"].update_one({"_id": chatID}, {"$set": {"summary": memory.moving_summary_buffer}})
+
+        # save the conversation history to the database
+        nativeMsgObjects = messages_to_dict(oldConversationPlusOnlyLatestMessages)
+
+        # get summary
+        memorySummary = memory.moving_summary_buffer
+
+        # insert or update the chat history
+        db["chats"].update_one({"_id": chatID}, {"$set": {"messages": nativeMsgObjects, "summary": memorySummary}}, upsert=True)
+
+        return {"answer": answer, "summary": memory.moving_summary_buffer, "history": nativeMsgObjects}
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
