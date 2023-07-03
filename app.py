@@ -30,7 +30,7 @@ load_dotenv()
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 MAX_CHAT_INTERPRET_RETRIES=3
-TEMPURATURE=0.5
+TEMPURATURE=0.7
 
 # Initialize Flask application
 app = Flask(__name__)
