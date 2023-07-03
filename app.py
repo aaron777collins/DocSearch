@@ -282,7 +282,7 @@ def chat():
         return {"status": "error", "message": "userID, chatID, or query is not provided."}, 400
 
 
-    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=TEMPURATURE)
+    llm = ChatOpenAI(model="gpt-3.5-turbo-16k", temperature=TEMPURATURE)
 
     # search database for chain
     # if chain exists, load it
@@ -304,7 +304,7 @@ def chat():
         history = ChatMessageHistory(messages=messages)
         memory = ConversationSummaryBufferMemory(
             llm=llm,
-            max_token_limit=3000,
+            max_token_limit=10000,
             return_messages=True,
             chat_memory=history,
         )
@@ -319,7 +319,7 @@ def chat():
 
     # copy the conversation but use the 16k model instead
     conversation_with_summaries_big = ConversationChain(
-        llm=ChatOpenAI(model="gpt-3.5-turbo-16k", temperature=TEMPURATURE),
+        llm=llm,
         memory=memory,
         verbose=True,
     )
@@ -338,7 +338,7 @@ def chat():
     #     memory.chat_memory.messages = chatsFromDB["conversation"]
 
     copy_of_conversation_with_summaries_big = ConversationChain(
-        llm=ChatOpenAI(model="gpt-3.5-turbo-16k", temperature=TEMPURATURE),
+        llm=llm,
         memory=memory.copy(deep=True),
         verbose=True,
     )
