@@ -30,6 +30,7 @@ load_dotenv()
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 MAX_CHAT_INTERPRET_RETRIES=3
+TEMPURATURE=0.5
 
 # Initialize Flask application
 app = Flask(__name__)
@@ -215,7 +216,7 @@ def chatWithAIQuery():
     if (userID is None or chatID is None or query is None):
         return {"status": "error", "message": "userID, chatID, or query is not provided."}, 400
 
-    llm = ChatOpenAI(model="gpt-3.5-turbo")
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=TEMPURATURE)
 
     messagesFromDB = db["chats"].find_one({"_id": chatID})
     if (messagesFromDB is None):
@@ -238,7 +239,7 @@ def chatWithAIQuery():
         memory.moving_summary_buffer = summary
 
     conversation_with_summaries_big = ConversationChain(
-        llm=ChatOpenAI(model="gpt-3.5-turbo-16k"),
+        llm=ChatOpenAI(model="gpt-3.5-turbo-16k", temperature=TEMPURATURE),
         memory=memory,
         verbose=True,
     )
@@ -281,7 +282,7 @@ def chat():
         return {"status": "error", "message": "userID, chatID, or query is not provided."}, 400
 
 
-    llm = ChatOpenAI(model="gpt-3.5-turbo")
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=TEMPURATURE)
 
     # search database for chain
     # if chain exists, load it
@@ -318,7 +319,7 @@ def chat():
 
     # copy the conversation but use the 16k model instead
     conversation_with_summaries_big = ConversationChain(
-        llm=ChatOpenAI(model="gpt-3.5-turbo-16k"),
+        llm=ChatOpenAI(model="gpt-3.5-turbo-16k", temperature=TEMPURATURE),
         memory=memory,
         verbose=True,
     )
@@ -337,7 +338,7 @@ def chat():
     #     memory.chat_memory.messages = chatsFromDB["conversation"]
 
     copy_of_conversation_with_summaries_big = ConversationChain(
-        llm=ChatOpenAI(model="gpt-3.5-turbo-16k"),
+        llm=ChatOpenAI(model="gpt-3.5-turbo-16k", temperature=TEMPURATURE),
         memory=memory.copy(deep=True),
         verbose=True,
     )
