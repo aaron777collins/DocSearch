@@ -132,7 +132,7 @@ def create_embeddings():
 
         faiss.write_index(index, f'Indexes/{userID}.index')
 
-        return {"status": "success"}, 200
+        return {"status": "success", "fileID": file.filename}, 200
     else:
         return {"status": "error", "message": "No sentences were extracted from the PDF or no embeddings were created."}, 400
 
