@@ -1,4 +1,5 @@
 import json
+import logging
 import random
 import string
 import sys
@@ -25,11 +26,20 @@ from langchain.schema import messages_from_dict, messages_to_dict
 from flask_cors import CORS
 
 
+logname = 'APILog.txt'
+
+logging.basicConfig(filename=logname,
+                    filemode='a',
+                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.DEBUG)
+
 load_dotenv()
 
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 MAX_CHAT_INTERPRET_RETRIES=3
+MAX_CHAT_REQ_COUNT = 20
 TEMPURATURE=0.7
 
 # Initialize Flask application
@@ -75,11 +85,15 @@ def get_embedding(text, model="text-embedding-ada-002"):
 @app.route('/embeddings', methods=['POST'])
 @swag_from('docs/embeddings.yml')  # YAML file describing the endpoint
 def create_embeddings():
+
+    logger = logging.getLogger('embeddings')
+
     # Get userID from the request
     userID = request.form['userID']
 
     # Get the PDF file from the request
     file = request.files['file']
+    newFileName = file.filename.replace(" ", "")
 
     # Read sentences from PDF
     sentences = get_sentences_from_pdf(io.BytesIO(file.read()))
@@ -106,10 +120,10 @@ def create_embeddings():
             counters.update_one({'userID': userID}, {'$set': {'index': highest_index}})
 
         # Use the incremented index as the index for the sentence
-        sentence_id = f"{userID}_{file.filename}_{highest_index}"
+        sentence_id = f"{userID}_{newFileName}_{highest_index}"
 
         # Store sentence along with its unique _id in MongoDB
-        collection.insert_one({'_id': highest_index, 'sentence': sentence, "file": file.filename, "sentence_id": sentence_id, "timestamp": datetime.now()})
+        collection.insert_one({'_id': highest_index, 'sentence': sentence, "file": newFileName, "sentence_id": sentence_id, "timestamp": datetime.now()})
 
     # Convert list of arrays to 2D array
     embeddings = np.vstack(embeddings)
@@ -117,7 +131,7 @@ def create_embeddings():
     # Create and store FAISS index
     if len(embeddings) > 0:
 
-        print(embeddings.shape)
+        logger.info(str(embeddings.shape))
         index = None
         if os.path.exists(f'Indexes/{userID}.index'):
             index = faiss.read_index(f'Indexes/{userID}.index')
@@ -140,11 +154,14 @@ def create_embeddings():
 @app.route('/search', methods=['POST'])
 @swag_from('docs/search.yml')  # YAML file describing the endpoint
 def search():
+
+    logger = logging.getLogger('search')
+
     # Get userID and query from the request
     userID = request.form['userID']
     query = request.form['query']
 
-    print(userID, query)
+    logger.info(userID + " " + query)
 
     # Get database
     db = client[userID]
@@ -167,7 +184,7 @@ def search():
             # Search the FAISS index
             D, I = index.search(np.array([query_embedding]), k=5)
 
-            print(I[0].tolist())
+            logger.info(str(I[0].tolist()))
 
             # Get the top 4 sentences associated with the nearest embedding
             collection = db["sentences"]
@@ -176,10 +193,10 @@ def search():
                     continue
                 result = collection.find_one({'_id': int(index)})  # Convert numpy integer to Python native integer
                 if (result is None):
-                    print("Could not find sentence with index", index, file=sys.stderr)
+                    logger.error("Could not find sentence with index" + str(index))
                     continue
                 result['distance'] = float(D[0][I[0].tolist().index(index)])
-                print(index, result['distance'])
+                logger.info(str(index) + " " + str(result['distance']))
                 results.append(result)
 
     return jsonify(results)
@@ -187,6 +204,8 @@ def search():
 @app.route('/getChatID', methods=['POST'])
 @swag_from('docs/getChatID.yml')  # YAML file describing the endpoint
 def getChatID():
+
+    logger = logging.getLogger('getChatID')
 
     userID = request.form['userID']
 
@@ -212,6 +231,8 @@ def chatWithAIQuery():
     chatID = request.form['chatID']
     query = request.form['query']
     db = client[userID]
+
+    logger = logging.getLogger('chatWithAIQuery')
 
     if (userID is None or chatID is None or query is None):
         return {"status": "error", "message": "userID, chatID, or query is not provided."}, 400
@@ -272,6 +293,8 @@ def chat():
     # the result with the query as the context
     # the best answer is iteratively refined as the AI's answer
     # the AI's answer is then added to the conversation history
+
+    logger = logging.getLogger('chat')
 
     userID = request.form['userID']
     chatID = request.form['chatID']
@@ -415,19 +438,61 @@ def chat():
         #     answerSummary = conversation_with_summaries.predict(input=predictionStr)
         #     print(answerSummary)
 
+
         infoStr = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") + f"## END OF File snippet from {result['file']} (Note that when one asks which file to find the info in, these can be used) ##"for i, result in enumerate(searchResults)])
 
         # finalize an answer giving ONLY the response given the query
-        predictionStr = f"Please make a decision. Either provide clear and concise info related to this: {query} given the following info (Do not include the question in your response.. just the info. If no info is found, provide your best guess based on the info. Try not to mix people/things up between files.) OR if the response would be that you don't have any related info, say '[NO ANSWER]' within your response.:" + infoStr
+        predictionStr = f"Please gather info to make a decision. The question to be answered is: {query}. IMPORTANT: You will be given info from a file snippet with <i> as the snippet index and a filename as well. If the information from a file snippet at <i> is being used then append '[REQUEST <FILENAME> <i+1>]' to retrieve the next snippet. ALWAYS request the next snippet if you're using the current snippet from that file. Regarding the decision, either provide clear and concise info related to this: {query} given the following info (plus what you requested) (Do not include the question in your response.. just the info. If no info is found, provide your best guess based on the info. Try not to mix people/things up between files.) OR if the response would be that you don't have any related info, request more info (as '[REQUEST <FILENAME> <i+1>]' )and say '[NO ANSWER]' within your response. Searched Info:" + infoStr + "IMPORTANT REMINDER: You will be given info from a file snippet with <i> as the snippet index and a filename as well. If the information from a file snippet at <i> is being used then append '[REQUEST <FILENAME> <i+1>]' to retrieve the next snippet. ALWAYS request the next snippet if you're using the current snippet from that file. If you are told [FAILEDREQUEST <FILENAME> <[Your wanted ID]>] then the retrieval failed. Notify the user that you couldn't retrieve more info in this one request because it doesn't exist or you reached the max retrieval limit. Do not tell the user that they can request more info using [Request <FILENAME> <i+1>] or any other method since that's hidden. Simply tell them that they can ask for more info if they'd like but would need to specify the topic. Do not mention the snippets."
 
 
         # attempting to answer with the 16k model with the summaries
         answer = "[NO ANSWER]"
         count = 0
         max_count = MAX_CHAT_INTERPRET_RETRIES
-        while "[NO ANSWER]" in answer and count < max_count:
+        reqCount = 0
+        max_req_count = MAX_CHAT_REQ_COUNT
+
+        while ("[NO ANSWER]" in answer and count < max_count) or ("[REQUEST" in answer and reqCount < max_req_count):
+            while "[REQUEST" in answer and reqCount < max_req_count:
+                try:
+                    logger.info("Request found:" + " " + str(answer))
+                    # search for the related snippet and predict again
+                    # parse out the [REQUEST ...] string
+                    reqStr = answer[answer.index("[REQUEST") + len("[REQUEST"):answer.index("]")].strip()
+                    originalReqStr = reqStr
+                    reqStr = reqStr.replace("[REQUEST", "").replace("]", "").strip()
+                    args = reqStr.split(" ")
+                    filename = "".join(args[:-1])
+                    newID = args[-1]
+                    if newID.isdigit():
+                        newID = int(newID)
+                    else:
+                        if "+" in newID:
+                            addArgs = newID.split("+")
+                            newID = int(addArgs[0]) + int(addArgs[1])
+                    res = db["sentences"].find_one({"sentence_id": f"{userID}_{filename}_{newID}"})
+                    if res is not None:
+                        # new snippet found, append it to the infoStr
+                        logger.info(f"Requested {newID} from {filename} and found {res['sentence']}")
+                        foundInfo = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") + f"## END OF File snippet from {result['file']} (Note that when one asks which file to find the info in, these can be used) ##"for i, result in enumerate([res])])
+                        answer = answer.replace(originalReqStr, foundInfo)
+                    else:
+                        # no snippet found, mention the failed request
+                        # [FAILEDREQUEST <FILENAME> <i>]
+                        answer = answer.replace(originalReqStr, f"[FAILEDREQUEST {filename} {newID} - Try fixing the file name or index. it should match exactly without spaces.]")
+                        logger.info(f"Requested {newID} from {filename} and failed to find it.")
+                except:
+                    # exception occured replacing snippet
+                    # just remove the [REQUEST ...] string
+                    logger.info("ISSUE WITH REQUESTING DATA: " + answer + " asking bot to fix it.")
+                    # requesting BOT to fix request syntax
+                    # answer = answer.replace(originalReqStr, "")
+                    answer = answer + "ISSUE WITH REQUESTING DATA: " + originalReqStr + " Please fix request syntax to match [REQUEST <FILENAME> <i+1>]"
+                reqCount += 1
             answer = conversation_with_summaries_big.predict(input=predictionStr)
             count += 1
+
+
 
         # attempting to answer with the 16k model without the summaries but still with conversation context
         if "[NO ANSWER]" in answer:
@@ -442,7 +507,7 @@ def chat():
             if answer.strip() == "":
                 answer = "I apologize, but I don't know the answer to that with the information I have."
 
-        print(query, answer)
+        logger.info(query + ": " + answer)
 
         # add the AI's answer to the conversation history
         # memory.save_context(inputs={"input": query}, outputs={"output": answer})
