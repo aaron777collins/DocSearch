@@ -64,6 +64,13 @@ swagger = Swagger(app, config=swagger_config)
 # Establish a connection to MongoDB
 client = MongoClient('mongodb://127.0.0.1:27017/')
 
+@app.route('/logs', methods=['GET'])
+def get_logs():
+    with open("APILog.txt", "r") as f:
+        lines = f.readlines()
+        last_lines = lines[-100:]
+    return jsonify({"logs": last_lines})
+
 def split_text(text, length, overlap):
     return [text[i : i + length] for i in range(0, len(text), length - overlap)]
 

@@ -82,6 +82,19 @@
       .form-label {
         font-weight: bold;
       }
+
+      #logs {
+        height: 400px;
+        overflow-y: auto;
+      }
+
+      #logs {
+        display: block !important;
+        border-radius: 5px;
+        padding: 20px;
+        width: 100%;
+      }
+
     </style>
   </head>
   <body>
@@ -143,6 +156,33 @@
             </label>
           </div>
         </div>
+        <button
+          class="btn btn-primary mt-2 ml-3 mt-2 openLogsBtn"
+          data-toggle="collapse"
+          data-target="#logsSection"
+          aria-expanded="false"
+          aria-controls="logsSection"
+        >
+          Open Logs
+        </button>
+        <div class="collapse col-12 mt-2" id="logsSection">
+          <div >
+            <button class="btn btn-primary" id="getLogs">Load Logs</button>
+            <div class="form-check">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                value=""
+                id="pollLogs"
+                checked
+              />
+              <label class="form-check-label" for="pollLogs">
+                Poll For Logs
+              </label>
+            </div>
+            <div id="logs" class="border rounded p-2 mt-2"></div>
+          </div>
+        </div>
         <div class="col-12 mt-5">
           <div
             id="chatBox"
@@ -157,6 +197,8 @@
           />
           <button class="btn btn-primary mt-2" id="sendMessage">Send</button>
           <button class="btn btn-primary mt-2" id="clearChat">Clear</button>
+          <!-- buffer whitespace section -->
+          <div style="height: 100px"></div>
         </div>
       </div>
     </div>
@@ -192,6 +234,8 @@
         } else {
           $("#networkIP").val("http://localhost:5000");
         }
+
+        scrollToBottom('chatBox')
       });
 
       $("#saveIP").click(function () {
@@ -310,6 +354,7 @@
               $("#chatBox").html(chatHTML);
               $("#userMessage").val("");
               localStorage.setItem("lastMessageHistory", $("#chatBox").html());
+              scrollToBottom('chatBox');
             }
           })
           .catch(function (error) {
@@ -317,6 +362,7 @@
             alert(`Error occurred: ${error}`);
             $("#chatBox").html(`<p style="color: red;">${error}</p>`);
             localStorage.setItem("lastMessageHistory", $("#chatBox").html());
+            scrollToBottom('chatBox');
           });
       });
 
@@ -359,10 +405,7 @@
                 `<p style="color: green;">File uploaded. File ID: ${response.data.fileID}</p>`
               );
               // save to chat history
-                localStorage.setItem(
-                    "lastMessageHistory",
-                    $("#chatBox").html()
-                );
+              localStorage.setItem("lastMessageHistory", $("#chatBox").html());
             }
           })
           .catch(function (error) {
@@ -371,8 +414,43 @@
           });
       });
 
+      $("#getLogs").click(function () {
+
+        // check if the logs section is open
+        if (!$("#logsSection").hasClass("show")) {
+          return; // do nothing
+        }
+        axios
+          .get(`${networkIP}/logs`)
+          .then(function (response) {
+            let logsHTML = "";
+            response.data.logs.forEach((log) => {
+              logsHTML += `<p>${log}</p>`;
+            });
+            $("#logs").html(logsHTML);
+            scrollToBottom('logs');
+          })
+          .catch(function (error) {
+            // append red message in logs showing failed to get logs
+            $("#logs").html(`<p style="color: red;">${error}</p>`);
+            scrollToBottom('logs');
+          });
+      });
+
+      // auto-refresh every 10 seconds
+      setInterval(function () {
+        if ($("#pollLogs").is(":checked")) {
+          $("#getLogs").click();
+        }
+      }, 10000);
+
       function capitalizeFirstLetter(string) {
         return string.charAt(0).toUpperCase() + string.slice(1);
+      }
+
+      function scrollToBottom(id) {
+        var div = document.getElementById(id);
+        div.scrollTop = div.scrollHeight;
       }
     </script>
   </body>
