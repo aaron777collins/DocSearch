@@ -24,7 +24,7 @@ from langchain.schema import BaseMessage, get_buffer_string, SystemMessage, Huma
 from langchain import LLMChain
 from langchain.schema import messages_from_dict, messages_to_dict
 from flask_cors import CORS
-
+import copy
 
 logname = 'APILog.txt'
 
@@ -446,10 +446,10 @@ def chat():
         #     print(answerSummary)
 
 
-        infoStr = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") + f"## END OF File snippet from {result['file']} (Note that when one asks which file to find the info in, these can be used) ##"for i, result in enumerate(searchResults)])
+        infoStr = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) and timestamp: {result['timestamp']} (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") + f"## END OF File snippet from {result['file']} (Note that when one asks which file to find the info in, these can be used) ##"for i, result in enumerate(searchResults)])
 
         # finalize an answer giving ONLY the response given the query
-        predictionStr = f"Please gather info to make a decision. The question to be answered is: {query}. IMPORTANT: You will be given info from a file snippet with <i> as the snippet index and a filename as well. If the information from a file snippet at <i> is being used then append '[REQUEST <FILENAME> <i+1>]' to retrieve the next snippet. ALWAYS request the next snippet if you're using the current snippet from that file. Regarding the decision, either provide clear and concise info related to this: {query} given the following info (plus what you requested) (Do not include the question in your response.. just the info. If no info is found, provide your best guess based on the info. Try not to mix people/things up between files.) OR if the response would be that you don't have any related info, request more info (as '[REQUEST <FILENAME> <i+1>]' )and say '[NO ANSWER]' within your response. Searched Info:" + infoStr + "IMPORTANT REMINDER: You will be given info from a file snippet with <i> as the snippet index and a filename as well. If the information from a file snippet at <i> is being used then append '[REQUEST <FILENAME> <i+1>]' to retrieve the next snippet. ALWAYS request the next snippet if you're using the current snippet from that file. If you are told [FAILEDREQUEST <FILENAME> <[Your wanted ID]>] then the retrieval failed. Notify the user that you couldn't retrieve more info in this one request because it doesn't exist or you reached the max retrieval limit. Do not tell the user that they can request more info using [Request <FILENAME> <i+1>] or any other method since that's hidden. Simply tell them that they can ask for more info if they'd like but would need to specify the topic. Do not mention the snippets."
+        predictionStr = f"Please gather info to make a decision. The question to be answered is: {query}. IMPORTANT: You will (and have been) be given info from a file snippet with <i> as the snippet index and a filename as well. If the information from a file snippet at <i> is being used (and is relevent) then append '[REQUEST <FILENAME> <i+1>]' to retrieve the next snippet. ALWAYS request the next snippet if you're using the current snippet from that file to answer the query. Regarding the decision, either provide clear and concise info related to this: {query} given the following info (plus what you requested) (Do not include the question in your response.. just the info. If no info is found, provide your best guess based on the info. Try not to mix people/things up between files.) OR if the response would be that you don't have any related info, request more info (as '[REQUEST <FILENAME> <i+1>]' )and say '[NO ANSWER]' within your response. Searched Info:" + infoStr + "IMPORTANT REMINDER: You will be given info from a file snippet with <i> as the snippet index and a filename as well. If the information from a file snippet at <i> is being used then append '[REQUEST <FILENAME> <i+1>]' to retrieve the next snippet. ALWAYS request the next snippet if you're using the current snippet from that file. If you are told [FAILEDREQUEST <FILENAME> <[Your wanted ID]>] then the retrieval failed. Notify the user that you couldn't retrieve more info in this one request because it doesn't exist or you reached the max retrieval limit. Do not tell the user that they can request more info using [Request <FILENAME> <i+1>] or any other method since that's hidden. Simply tell them that they can ask for more info if they'd like but would need to specify the topic. Do not mention the snippets. Note that files, their upload dates, and their contents are public and important to remember."
 
 
         # attempting to answer with the 16k model with the summaries
@@ -459,6 +459,7 @@ def chat():
         reqCount = 0
         max_req_count = MAX_CHAT_REQ_COUNT
 
+        newInfoToAddToContext = set()
         while ("[NO ANSWER]" in answer and count < max_count) or ("[REQUEST" in answer and reqCount < max_req_count):
             while "[REQUEST" in answer and reqCount < max_req_count:
                 try:
@@ -466,7 +467,8 @@ def chat():
                     # search for the related snippet and predict again
                     # parse out the [REQUEST ...] string
                     reqStr = answer[answer.index("[REQUEST") + len("[REQUEST"):answer.index("]")].strip()
-                    originalReqStr = reqStr
+                    # originalReqStr = reqStr
+                    originalFullReqStr = answer[answer.index("[REQUEST"):answer.index("]") + 1].strip()
                     reqStr = reqStr.replace("[REQUEST", "").replace("]", "").strip()
                     args = reqStr.split(" ")
                     filename = "".join(args[:-1])
@@ -480,22 +482,52 @@ def chat():
                     res = db["sentences"].find_one({"sentence_id": f"{userID}_{filename}_{newID}"})
                     if res is not None:
                         # new snippet found, append it to the infoStr
-                        logger.info(f"Requested {newID} from {filename} and found {res['sentence']}")
-                        foundInfo = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") + f"## END OF File snippet from {result['file']} (Note that when one asks which file to find the info in, these can be used) ##"for i, result in enumerate([res])])
-                        answer = answer.replace(originalReqStr, foundInfo)
+                        logger.debug(f"Requested {newID} from {filename} and found {res['sentence']}")
+                        foundInfo = "-----".join([f"Snippet index from a file: <{i+1}> (note the index is hidden from answers), where the filename: '{result['file']}' (public) and timestamp: {result['timestamp']} (public) has the contents (this file may be unrelated to the other parts): " + result["sentence"].replace("\n", " ") + f"## END OF File snippet from {result['file']} (Note that when one asks which file to find the info in, these can be used) ##"for i, result in enumerate([res])])
+                        # answer = answer.replace(originalReqStr, foundInfo)
+                        answer = answer.replace(originalFullReqStr, "") # make string empty
+                        # add the found info to the conversation context
+                        # conversation_with_summaries_big.memory.save_context(inputs={"input": "Context: " + answer + " REQUESTED INFO: " + originalReqStr}, outputs={"output": foundInfo})
+                        logger.debug("New info to be added to context: " + foundInfo)
+                        newInfoToAddToContext.add((originalFullReqStr,  f"Request: {originalFullReqStr} returned {foundInfo}"))
                     else:
                         # no snippet found, mention the failed request
                         # [FAILEDREQUEST <FILENAME> <i>]
-                        answer = answer.replace(originalReqStr, f"[FAILEDREQUEST {filename} {newID} - Try fixing the file name or index. it should match exactly without spaces.]")
-                        logger.info(f"Requested {newID} from {filename} and failed to find it.")
+                        answer = answer.replace(originalFullReqStr, "")
+                        logger.debug(f"Requested {newID} from {filename} and failed to find it.")
+                        # conversation_with_summaries_big.memory.save_context(inputs={"input": "Context: " + answer + " REQUESTED: " + originalReqStr}, outputs={"output": f"[FAILEDREQUEST {filename} {newID} - Try fixing the file name or index. it should match exactly without spaces.]"})
+                        logger.debug("Failed request added to context: " + f"[FAILEDREQUEST {filename} {newID} - Try fixing the file name or index. it should match exactly without spaces.]")
+                        newInfoToAddToContext.add((originalFullReqStr, f"[FAILEDREQUEST {filename} {newID} - Try fixing the file name or index. it should match exactly without spaces.]"))
+
                 except:
                     # exception occured replacing snippet
                     # just remove the [REQUEST ...] string
-                    logger.info("ISSUE WITH REQUESTING DATA: " + answer + " asking bot to fix it.")
+                    logger.debug("ISSUE WITH REQUESTING DATA: " + answer + " asking bot to fix it.")
                     # requesting BOT to fix request syntax
                     # answer = answer.replace(originalReqStr, "")
-                    answer = answer + "ISSUE WITH REQUESTING DATA: " + originalReqStr + " Please fix request syntax to match [REQUEST <FILENAME> <i+1>]"
+
+                    # answer = answer + "ISSUE WITH REQUESTING DATA: " + originalReqStr + " Please fix request syntax to match [REQUEST <FILENAME> <i+1>]"
+                    # conversation_with_summaries_big.memory.save_context(inputs={"input": "Context: " + answer + " REQUESTED: " + originalReqStr}, outputs={"output": f"ISSUE WITH REQUESTING DATA: " + originalReqStr + " Please fix request syntax to match [REQUEST <FILENAME> <i+1>]"})
+                    newInfoToAddToContext.add((originalFullReqStr, f"ISSUE WITH REQUESTING DATA: " + originalFullReqStr + " Please fix request syntax to match [REQUEST <FILENAME> <i+1>]"))
+
                 reqCount += 1
+
+            # looping through newInfoToAddToContext and creating a context string and saving it
+            requestsStr = ""
+            responsesStr = ""
+            for req, resp in newInfoToAddToContext:
+                requestsStr += req + " "
+                responsesStr += resp + " "
+
+            # add to context
+            conversation_with_summaries_big.memory.save_context(inputs={"input": "Context: " + answer + " REQUESTED: " + requestsStr}, outputs={"output": responsesStr})
+
+            logger.debug("Inputs: " + "Context: " + answer + " \nREQUESTED: " + requestsStr + " \nOutputs: " + responsesStr)
+
+            debugMemVars = conversation_with_summaries_big.memory.load_memory_variables(inputs=None)
+            logger.debug(jsonify(messages_to_dict(debugMemVars["history"])))
+            logger.debug(jsonify(conversation_with_summaries_big.memory.moving_summary_buffer))
+
             answer = conversation_with_summaries_big.predict(input=predictionStr)
             count += 1
 
@@ -520,31 +552,45 @@ def chat():
         # memory.save_context(inputs={"input": query}, outputs={"output": answer})
         # memory.prune()
 
-        memory.save_context(inputs={"input": query}, outputs={"output": answer})
+        memory.save_context(inputs={"input": "[SHOWN-IN-CHAT]" + query}, outputs={"output": "[SHOWN-IN-CHAT]" + answer})
         conversationHistory: List[BaseMessage]= memory.load_memory_variables(inputs=None)["history"]
 
         # combine the conversation history from OLD_MEMORY and the new conversation history
-        OLD_CONVERSATION_HISTORY = OLD_MEMORY.load_memory_variables(inputs=None)["history"]
+        # OLD_CONVERSATION_HISTORY = OLD_MEMORY.load_memory_variables(inputs=None)["history"]
 
-        oldConversationPlusOnlyLatestMessages = OLD_CONVERSATION_HISTORY + conversationHistory[-2:]
+
+        # oldConversationPlusOnlyLatestMessages = OLD_CONVERSATION_HISTORY + conversationHistory[-2:]
+
 
         # removing system messages
-        oldConversationPlusOnlyLatestMessages = [msg for msg in oldConversationPlusOnlyLatestMessages if msg.type != "system"]
+        # oldConversationPlusOnlyLatestMessages = [msg for msg in oldConversationPlusOnlyLatestMessages if msg.type != "system"]
+
+        conversationWithoutSystemMessages = [msg for msg in conversationHistory if msg.type != "system"]
+        conversationConvertedToNativeMsgObjects = messages_to_dict(conversationWithoutSystemMessages)
+
+        # for i, msg in enumerate(conversationConvertedToNativeMsgObjects[:-2]):
+        #     if "[HIDDEN-IN-CHAT]" not in msg["data"]["content"]:
+        #         conversationConvertedToNativeMsgObjects[i]["data"]["content"] = "[HIDDEN-IN-CHAT]" + msg["data"]["content"]
 
         # save the conversation history to the database
         # db["chats"].update_one({"_id": chatID}, {"$set": {"conversation": memory.chat_memory.messages}})
         # db["summaries"].update_one({"_id": chatID}, {"$set": {"summary": memory.moving_summary_buffer}})
 
         # save the conversation history to the database
-        nativeMsgObjects = messages_to_dict(oldConversationPlusOnlyLatestMessages)
+        # nativeMsgObjectsForLatestMessages = messages_to_dict(oldConversationPlusOnlyLatestMessages)
 
         # get summary
         memorySummary = memory.moving_summary_buffer
 
-        # insert or update the chat history
-        db["chats"].update_one({"_id": chatID}, {"$set": {"messages": nativeMsgObjects, "summary": memorySummary}}, upsert=True)
+        visibleMessages = [copy.deepcopy(msg) for msg in conversationConvertedToNativeMsgObjects if "[SHOWN-IN-CHAT]" in msg["data"]["content"]]
+        for i, msg in enumerate(visibleMessages):
+            visibleMessages[i]["data"]["content"] = msg["data"]["content"].replace("[SHOWN-IN-CHAT]", "")
 
-        return {"answer": answer, "summary": memory.moving_summary_buffer, "history": nativeMsgObjects}
+
+        # insert or update the chat history
+        db["chats"].update_one({"_id": chatID}, {"$set": {"messages": conversationConvertedToNativeMsgObjects, "summary": memorySummary}}, upsert=True)
+
+        return {"answer": answer, "summary": memory.moving_summary_buffer, "history": visibleMessages}
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
