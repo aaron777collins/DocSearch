@@ -2,4 +2,4 @@ Indexes/
 Indexes/**/*
 venv/**/*
 .env
-
+APILog.txt
