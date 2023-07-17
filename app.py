@@ -152,7 +152,7 @@ def create_embeddings():
 
         # make summary of the sentence as the current snippet
         # using the previous convo to make sense
-        predictionStr = f"You're a super intelligent AI with amazing linguistic and summary skills and keeps track of where info comes from (for future summarizing). Using the previous information and the current new info from file: {filename} at snippet ID: {highest_index}, please summarize the following information: " + sentence.replace("\n", " ") + " (Only respond with the summary related info and do not say anything else.)"
+        predictionStr = f"You're a super intelligent AI with amazing linguistic and summary skills and keeps track of where info comes from (for future summarizing). Using the previous information (if any) and the current new info that I'm providing from file: {filename} at snippet ID: {highest_index}, please summarize the following information from the file snippet: " + sentence.replace("\n", " ") + " (Only respond with the summary related info and do not say anything else.)"
 
         # get the summary
         summary = conversation_with_summaries_big.predict(input=predictionStr)
