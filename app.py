@@ -108,7 +108,7 @@ def create_embeddings():
     sentences = get_sentences_from_pdf(io.BytesIO(file.read()))
 
 
-    filename = file.filename.replace(" ", "") + "_" + hashlib.sha256("--- JOINED SNIPPET ---".join(sentences)).hexdigest()
+    filename = file.filename.replace(" ", "") + "_" + hashlib.sha256("--- JOINED SNIPPET ---".join(sentences).encode()).hexdigest()
 
     # Get database and collection
     db = client[userID]  # Use userID as database name
