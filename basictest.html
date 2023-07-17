@@ -358,9 +358,17 @@
             }
           })
           .catch(function (error) {
+            // if error message contains "innappropriate", append red message in chatbox
+            if (error.message.includes("innappropriate")) {
+              $("#chatBox").append(
+                `<p style="color: red;">Your content was innappropriate. Please see our content policy.</p>`
+              );
+            } else {
+              $("#chatBox").append(
+                `<p style="color: red;">${error.message}</p>`
+              );
+            }
             $("#overlay").hide();
-            alert(`Error occurred: ${error}`);
-            $("#chatBox").html(`<p style="color: red;">${error}</p>`);
             localStorage.setItem("lastMessageHistory", $("#chatBox").html());
             scrollToBottom('chatBox');
           });
@@ -409,8 +417,19 @@
             }
           })
           .catch(function (error) {
+            // if error message contains "innappropriate", append red message in chatbox
+            if (error.message.includes("innappropriate")) {
+              $("#chatBox").append(
+                `<p style="color: red;">Your content was innappropriate. Please see our content policy.</p>`
+              );
+            } else {
+              $("#chatBox").append(
+                `<p style="color: red;">${error.message}</p>`
+              );
+            }
             $("#overlay").hide();
-            alert(`Error occurred: ${error}`);
+            localStorage.setItem("lastMessageHistory", $("#chatBox").html());
+            scrollToBottom('chatBox');
           });
       });
 
