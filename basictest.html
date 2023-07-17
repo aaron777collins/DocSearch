@@ -358,17 +358,17 @@
             }
           })
           .catch(function (error) {
-            // if error message contains "innappropriate", append red message in chatbox
-            if (error.message.includes("innappropriate")) {
+            // if error message contains "inappropriate", append red message in chatbox
+            $("#overlay").hide();
+            if (error.response.data.message.includes("inappropriate")) {
               $("#chatBox").append(
-                `<p style="color: red;">Your content was innappropriate. Please see our content policy.</p>`
+                `<p style="color: red;">Your content was inappropriate. Please see our content policy.</p>`
               );
             } else {
               $("#chatBox").append(
                 `<p style="color: red;">${error.message}</p>`
               );
             }
-            $("#overlay").hide();
             localStorage.setItem("lastMessageHistory", $("#chatBox").html());
             scrollToBottom('chatBox');
           });
@@ -417,17 +417,17 @@
             }
           })
           .catch(function (error) {
-            // if error message contains "innappropriate", append red message in chatbox
-            if (error.message.includes("innappropriate")) {
+            // if error message contains "inappropriate", append red message in chatbox
+            $("#overlay").hide();
+            if (error.response.data.message.includes("inappropriate")) {
               $("#chatBox").append(
-                `<p style="color: red;">Your content was innappropriate. Please see our content policy.</p>`
+                `<p style="color: red;">Your content was inappropriate. Please see our content policy.</p>`
               );
             } else {
               $("#chatBox").append(
                 `<p style="color: red;">${error.message}</p>`
               );
             }
-            $("#overlay").hide();
             localStorage.setItem("lastMessageHistory", $("#chatBox").html());
             scrollToBottom('chatBox');
           });
