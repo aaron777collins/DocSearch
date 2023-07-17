@@ -65,6 +65,52 @@ swagger = Swagger(app, config=swagger_config)
 # Establish a connection to MongoDB
 client = MongoClient('mongodb://127.0.0.1:27017/')
 
+def checkFlagged(input: str) -> bool:
+    # hit the openAI moderation endpoint
+    # if the response is flagged, return true
+    # otherwise return false
+
+    #  EXAMPLE RESPONSE    {
+    #   "id": "modr-XXXXX",
+    #   "model": "text-moderation-005",
+    #   "results": [
+    #     {
+    #       "flagged": true,
+    #       "categories": {
+    #         "sexual": false,
+    #         "hate": false,
+    #         "harassment": false,
+    #         "self-harm": false,
+    #         "sexual/minors": false,
+    #         "hate/threatening": false,
+    #         "violence/graphic": false,
+    #         "self-harm/intent": false,
+    #         "self-harm/instructions": false,
+    #         "harassment/threatening": true,
+    #         "violence": true,
+    #       },
+    #       "category_scores": {
+    #         "sexual": 1.2282071e-06,
+    #         "hate": 0.010696256,
+    #         "harassment": 0.29842457,
+    #         "self-harm": 1.5236925e-08,
+    #         "sexual/minors": 5.7246268e-08,
+    #         "hate/threatening": 0.0060676364,
+    #         "violence/graphic": 4.435014e-06,
+    #         "self-harm/intent": 8.098441e-10,
+    #         "self-harm/instructions": 2.8498655e-11,
+    #         "harassment/threatening": 0.63055265,
+    #         "violence": 0.99011886,
+    #       }
+    #     }
+    #   ]
+    # }
+    response = openai.Moderation.create(
+        input=input
+    )
+    output = response["results"][0]["flagged"]
+    return output
+
 @app.route('/logs', methods=['GET'])
 def get_logs():
     with open("APILog.txt", "r") as f:
@@ -135,6 +181,7 @@ def create_embeddings():
     embeddings = []
     lowest_index = -1
     highest_index = -1
+    fileIDsAdded = []
 
     for i, sentence in enumerate(sentences):
         # Retrieve the current highest index for the user
@@ -157,6 +204,10 @@ def create_embeddings():
         predictionStr = f"You're a super intelligent AI with amazing linguistic and summary skills and keeps track of where info comes from (for future summarizing). Using the previous information (if any), please summarize the following information:" + sentence.replace("\n", " ") + "-- METADATA: From File: {filename} at snippet ID: {highest_index},  (Only respond with the summary related info and do not say anything else.)"
 
         # get the summary
+        if checkFlagged(predictionStr):
+            # if the summary is flagged, then the content is inappropriate
+            # so we should stop summarizing and return an error
+            return {"status": "error", "message": "The content is inappropriate."}, 400
         summary = conversation_with_summaries_big.predict(input=predictionStr)
         conversation_with_summaries_big.memory.save_context(inputs={"input": predictionStr}, outputs={"output": summary})
 
@@ -171,9 +222,22 @@ def create_embeddings():
 
         # Store sentence along with its unique _id in MongoDB
         collection.insert_one({'_id': highest_index, 'sentence': sentence_with_summary, "file": filename, "sentence_id": sentence_id, "timestamp": date})
+        fileIDsAdded.append(sentence_id)
 
     # preparing a final summary of the entire file using the conversation info.
     fileSummaryPrompt = f"You're a super intelligent AI with amazing linguistic and summary skills. Please summarize the entire file: {filename} using the previous info from our chat (Note that this summary will be used for future searches. Only respond with the summary related info and do not say anything else)."
+
+    # check flagged
+    if checkFlagged(fileSummaryPrompt):
+        # if the summary is flagged, then the content is inappropriate
+        # so we should stop summarizing and return an error
+        # we also need to delete the sentences that were added to the database
+
+        # delete the sentences that were added to the database
+        for fileID in fileIDsAdded:
+            collection.delete_one({"sentence_id": fileID})
+
+        return {"status": "error", "message": "The content is inappropriate."}, 400
     fileSummary = conversation_with_summaries_big.predict(input=fileSummaryPrompt)
 
     finalSummaryStr = f"[SUMMARY of File: {filename} with snippet indexes ranging from {lowest_index} to {highest_index} saved at the datetime {date}: {fileSummary} ENDOFSUMMARY]"
@@ -331,6 +395,11 @@ def chatWithAIQuery():
                     new query for the info. Don't say 'reworded prompt:', just say the new prompt.): {query} (Only respond with the \
                         reworded prompt and do not say anything else.)"
 
+    # check flagged
+    if checkFlagged(rewordQueryStr):
+        # if the query is flagged, then the content is inappropriate
+        # so we should stop answering and return an error
+        return {"status": "error", "message": "The content is inappropriate."}, 400
     reworded_query = conversation_with_summaries_big.predict(input=rewordQueryStr)
 
 
@@ -425,6 +494,11 @@ def chat():
     shouldQueryStr = f"You're a super intelligent AI with the ability to do anything. Please determine whether more info \
         is needed to answer this question or if we can just respond with the answer. If more info is needed, please respond \
             with '[QUERY]' and if we can just respond with the answer, please respond with the answer, followed by '[CONTINUE CONVO]'. The query is: {query} (Only respond with '[QUERY]' or the answer with '[CONTINUE CONVO]' and do not say anything else.)"
+    # check flagged
+    if checkFlagged(shouldQueryStr):
+        # if the query is flagged, then the content is inappropriate
+        # so we should stop answering and return an error
+        return {"status": "error", "message": "The content is inappropriate."}, 400
     shouldQueryResponse = copy_of_conversation_with_summaries_big.predict(input=shouldQueryStr)
 
     if "[CONTINUE CONVO]" in shouldQueryResponse:
@@ -577,6 +651,11 @@ def chat():
             logger.debug(jsonify(messages_to_dict(debugMemVars["history"])))
             logger.debug(jsonify(conversation_with_summaries_big.memory.moving_summary_buffer))
 
+            # check flagged
+            if checkFlagged(predictionStr):
+                # if the query is flagged, then the content is inappropriate
+                # so we should stop answering and return an error
+                return {"status": "error", "message": "The content is inappropriate."}, 400
             answer = conversation_with_summaries_big.predict(input=predictionStr)
             count += 1
 
@@ -586,6 +665,11 @@ def chat():
         if "[NO ANSWER]" in answer:
             # attempt to answer with the 16k model without the summaries, just using your knowledge
             alreadyTrainedQueryStr = f"Please provide clear and concise info related to this: {query}. Use your abilities as a super-intelligent AI in all fields (language, math, reasoning, legal, etc.) to guess the answer. Say '[NO ANSWER]' if you can't guess the answer or related info. Note that the query is more important than previous info or conversation and may be unrelated to previous info/conversation."
+            # check flagged
+            if checkFlagged(alreadyTrainedQueryStr):
+                # if the query is flagged, then the content is inappropriate
+                # so we should stop answering and return an error
+                return {"status": "error", "message": "The content is inappropriate."}, 400
             answer = conversation_with_summaries_big.predict(input=alreadyTrainedQueryStr)
 
         if "[NO ANSWER]" in answer:
