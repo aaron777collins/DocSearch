@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import random
@@ -100,7 +101,9 @@ def create_embeddings():
 
     # Get the PDF file from the request
     file = request.files['file']
-    newFileName = file.filename.replace(" ", "")
+    date = datetime.now()
+
+    filename = file.filename.replace(" ", "") + "_" + hashlib.sha256(file.read()).hexdigest()
 
     # Read sentences from PDF
     sentences = get_sentences_from_pdf(io.BytesIO(file.read()))
@@ -110,11 +113,26 @@ def create_embeddings():
     collection = db['sentences']
     counters = db['counters']
 
-    embeddings = []
-    for i, sentence in enumerate(sentences):
-        embedding = get_embedding(sentence)
-        embeddings.append(embedding)
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=TEMPURATURE)
 
+    memory = ConversationSummaryBufferMemory(
+        llm=llm,
+        max_token_limit=10000,
+        return_messages=True,
+        chat_memory=ChatMessageHistory(messages=[]),
+    )
+
+    conversation_with_summaries_big = ConversationChain(
+        llm=llm,
+        memory=memory,
+        verbose=True,
+    )
+
+    embeddings = []
+    lowest_index = -1
+    highest_index = -1
+
+    for i, sentence in enumerate(sentences):
         # Retrieve the current highest index for the user
         counter = counters.find_one({'userID': userID})
         if counter is None:
@@ -126,11 +144,38 @@ def create_embeddings():
             highest_index = counter['index'] + 1
             counters.update_one({'userID': userID}, {'$set': {'index': highest_index}})
 
+
+        if lowest_index == -1:
+            lowest_index = highest_index
+
+        # make summary of the sentence as the current snippet
+        # using the previous convo to make sense
+        predictionStr = f"You're a super intelligent AI with amazing linguistic and summary skills and keeps track of where info comes from (for future summarizing). Using the previous information and the current new info from file: {filename} at snippet ID: {highest_index}, please summarize the following information: " + sentence.replace("\n", " ") + " (Only respond with the summary related info and do not say anything else.)"
+
+        # get the summary
+        summary = conversation_with_summaries_big.predict(input=predictionStr)
+        conversation_with_summaries_big.memory.save_context(inputs={"input": predictionStr}, outputs={"output": summary})
+
+        sentence_with_summary = f"{sentence} [SUMMARY of File: {filename} at snippet ID: {highest_index} saved at date {date}: {summary} ENDOFSUMMARY]"
+
+        embedding = get_embedding(sentence_with_summary)
+        embeddings.append(embedding)
+
+
         # Use the incremented index as the index for the sentence
-        sentence_id = f"{userID}_{newFileName}_{highest_index}"
+        sentence_id = f"{userID}_{filename}_{highest_index}"
 
         # Store sentence along with its unique _id in MongoDB
-        collection.insert_one({'_id': highest_index, 'sentence': sentence, "file": newFileName, "sentence_id": sentence_id, "timestamp": datetime.now()})
+        collection.insert_one({'_id': highest_index, 'sentence': sentence_with_summary, "file": filename, "sentence_id": sentence_id, "timestamp": date})
+
+    # preparing a final summary of the entire file using the conversation info.
+    fileSummaryPrompt = f"You're a super intelligent AI with amazing linguistic and summary skills. Please summarize the entire file: {filename} using the previous info from our chat (Note that this summary will be used for future searches. Only respond with the summary related info and do not say anything else)."
+    fileSummary = conversation_with_summaries_big.predict(input=fileSummaryPrompt)
+
+    finalSummaryStr = f"[SUMMARY of File: {filename} with snippet indexes ranging from {lowest_index} to {highest_index} saved at the datetime {date}: {fileSummary} ENDOFSUMMARY]"
+
+    # save the summary to the database
+    db["summaries"].update_one({"_id": filename}, {"$set": {"summary": finalSummaryStr}}, upsert=True)
 
     # Convert list of arrays to 2D array
     embeddings = np.vstack(embeddings)
@@ -153,7 +198,7 @@ def create_embeddings():
 
         faiss.write_index(index, f'Indexes/{userID}.index')
 
-        return {"status": "success", "fileID": file.filename}, 200
+        return {"status": "success", "fileID": filename}, 200
     else:
         return {"status": "error", "message": "No sentences were extracted from the PDF or no embeddings were created."}, 400
 
