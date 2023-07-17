@@ -115,7 +115,7 @@ def create_embeddings():
     collection = db['sentences']
     counters = db['counters']
 
-    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=TEMPURATURE)
+    llm = ChatOpenAI(model="gpt-3.5-turbo-16k", temperature=TEMPURATURE)
 
     memory = ConversationSummaryBufferMemory(
         llm=llm,
